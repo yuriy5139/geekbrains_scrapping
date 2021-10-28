@@ -3,6 +3,9 @@ from bs4 import BeautifulSoup, element
 import pandas as pd
 import re
 
+from pymongo import MongoClient
+from random import randint
+
 pd.set_option('display.max_columns', 10)
 pd.set_option('display.width', 500)
 
@@ -23,8 +26,8 @@ def parse_hh_page(vac_df, res):
         employer = vacancy.findAll("a", {"data-qa": "vacancy-serp__vacancy-employer"})
         address = vacancy.findAll("div", {"data-qa": "vacancy-serp__vacancy-address"})
         link = vacancy.findAll("a", {"class": "bloko-link"})
-        metro_stations = None
 
+        location = ''
         if len(address[0].contents) == 1:
             location = address[0].contents[0]
         elif len(address[0].contents) > 1:
@@ -85,6 +88,30 @@ def comp_parser(compensation):
     return None
 
 
-vacancies = parse_hh(pages=2)
+def add_new_only(vacancies, conn_url):
+    client = MongoClient(conn_url)
+    db = client.vacancies
+    current_rec = pd.DataFrame(list(db.collection.find({})))
+    df_new = vacancies[~(vacancies['link'] == current_rec['link'])]
+    result = db.collection.insert_many(df_new.to_dict('records'))
+    return result
 
-print(vacancies)
+
+def find_by_money(money, conn_url):
+    client = MongoClient(conn_url)
+    db = client.vacancies
+    interested = pd.DataFrame(
+        list(db.collection.find({"$or": [{"startmoney": {"$gte": money}}, {"endmoney": {"$gte": money}}]})))
+    return interested
+
+
+if __name__ == '__main__':
+    # получим новые вакансии (2 страницы)
+    # vacancies = parse_hh(pages=2)
+
+    #Добавим только те, которые отсутствуют в БД на данный момент
+    # add_new_only(vacancies, 'mongodb://mongo:password@localhost:27017/?authSource=admin')
+
+    #Запросим вакансии с оплатой более 300К рублей
+    df_res = find_by_money(300000, 'mongodb://mongo:password@localhost:27017/?authSource=admin')
+    print(df_res)
